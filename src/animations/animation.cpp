@@ -1,165 +1,90 @@
 #include "animation.h"
 
-#include "config.h"
-#include "display/display.h"
+#include <Arduino.h>
+
 #include "face/face.h"
 
 // =====================================================
 // BLINK ANIMATION
 // =====================================================
 
-void blinkAnimation()
+void blink_animation()
 {
     // -------------------------------------------------
     // Close eyes
     // -------------------------------------------------
 
-    tft.fillScreen(BG_COLOR);
-
-    drawNormalEyebrows();
-
-    // Left closed eye
-
-    tft.drawLine(
-        65,
-        110,
-        135,
-        110,
-        EYE_COLOR
-    );
-
-    // Right closed eye
-
-    tft.drawLine(
-        185,
-        110,
-        255,
-        110,
-        EYE_COLOR
-    );
-
-    drawCheeks();
-
-    drawNormalMouth();
-
+    draw_blink_frame();
     delay(100);
 
     // -------------------------------------------------
     // Open eyes
     // -------------------------------------------------
 
-    drawNormalFace();
-
+    draw_normal_face();
     delay(100);
 }
-
 
 // =====================================================
 // HAPPY ANIMATION
 // =====================================================
 
-void happyAnimation()
+void happy_animation()
 {
     // -------------------------------------------------
     // Start
     // -------------------------------------------------
 
-    drawHappyFace(
-        0,
-        0
-    );
-
+    draw_happy_face(0, 0);
     delay(150);
 
     // -------------------------------------------------
     // Move up
     // -------------------------------------------------
 
-    drawHappyFace(
-        0,
-        -5
-    );
-
+    draw_happy_face(0, -5);
     delay(100);
 
     // -------------------------------------------------
     // Move down
     // -------------------------------------------------
 
-    drawHappyFace(
-        0,
-        5
-    );
-
+    draw_happy_face(0, 5);
     delay(100);
 
     // -------------------------------------------------
     // Back to center
     // -------------------------------------------------
 
-    drawHappyFace(
-        0,
-        0
-    );
-
+    draw_happy_face(0, 0);
     delay(200);
 
     // -------------------------------------------------
     // Blink
     // -------------------------------------------------
 
-    blinkAnimation();
+    blink_animation();
 
     // -------------------------------------------------
     // Return normal
     // -------------------------------------------------
 
-    drawNormalFace();
+    draw_normal_face();
 }
-
 
 // =====================================================
 // SLEEPY ANIMATION
 // =====================================================
 
-void sleepyAnimation()
+void sleepy_animation()
 {
     // -------------------------------------------------
-    // Eyes slowly close
+    // Eyes slowly close (lid drops 3px per frame)
     // -------------------------------------------------
 
     for (int i = 0; i < 3; i++)
     {
-        tft.fillScreen(BG_COLOR);
-
-        drawSleepyEyebrows();
-
-        int y = 108 + (i * 3);
-
-        // Left eye
-
-        tft.drawLine(
-            70,
-            y,
-            130,
-            y,
-            EYE_COLOR
-        );
-
-        // Right eye
-
-        tft.drawLine(
-            190,
-            y,
-            250,
-            y,
-            EYE_COLOR
-        );
-
-        drawCheeks();
-
-        drawSleepyMouth();
-
+        draw_sleepy_frame(108 + (i * 3));
         delay(120);
     }
 
@@ -175,137 +100,99 @@ void sleepyAnimation()
 
     for (int i = 0; i < 3; i++)
     {
-        drawNormalFace();
-
+        draw_normal_face();
         delay(100);
     }
 }
 
-
 // =====================================================
-// SURPRISE ANIMATION
+// SURPRISED ANIMATION
 // =====================================================
 
-void surprisedAnimation()
+void surprised_animation()
 {
     // -------------------------------------------------
     // Start with normal face
     // -------------------------------------------------
 
-    drawNormalFace();
-
+    draw_normal_face();
     delay(100);
 
     // -------------------------------------------------
     // Expand eyes
     // -------------------------------------------------
 
-    drawSurprisedFace(-3);
-
+    draw_surprised_face(-3);
     delay(120);
 
-    drawSurprisedFace(0);
-
+    draw_surprised_face(0);
     delay(120);
 
-    drawSurprisedFace(3);
-
+    draw_surprised_face(3);
     delay(120);
 
-    drawSurprisedFace(0);
-
+    draw_surprised_face(0);
     delay(500);
 
     // -------------------------------------------------
     // Return normal
     // -------------------------------------------------
 
-    drawNormalFace();
+    draw_normal_face();
 }
 
 // =====================================================
 // DIZZY ANIMATION
 // =====================================================
 
-void dizzyAnimation()
+void dizzy_animation()
 {
     // -------------------------------------------------
     // Start dizzy
     // -------------------------------------------------
 
-    drawDizzyFace(
-        0,
-        0
-    );
-
+    draw_dizzy_face(0, 0);
     delay(100);
-
 
     // -------------------------------------------------
     // Shake left
     // -------------------------------------------------
 
-    drawDizzyFace(
-        -8,
-        0
-    );
-
+    draw_dizzy_face(-8, 0);
     delay(80);
-
 
     // -------------------------------------------------
     // Shake right
     // -------------------------------------------------
 
-    drawDizzyFace(
-        8,
-        0
-    );
-
+    draw_dizzy_face(8, 0);
     delay(80);
-
 
     // -------------------------------------------------
     // Shake left again
     // -------------------------------------------------
 
-    drawDizzyFace(
-        -6,
-        3
-    );
-
+    draw_dizzy_face(-6, 3);
     delay(80);
-
 
     // -------------------------------------------------
     // Shake right again
     // -------------------------------------------------
 
-    drawDizzyFace(
-        6,
-        -3
-    );
-
+    draw_dizzy_face(6, -3);
     delay(80);
-
 
     // -------------------------------------------------
     // Center
     // -------------------------------------------------
 
-    drawDizzyFace(
-        0,
-        0
-    );
-
+    draw_dizzy_face(0, 0);
     delay(300);
-
 
     // -------------------------------------------------
     // Recover
     // -------------------------------------------------
 
-    drawNormalFace();
-
+    draw_normal_face();
     delay(150);
 }

@@ -1,16 +1,28 @@
 #include "buzzer.h"
-#include <Arduino.h>
-#include "../../include/config.h"
 
-void initBuzzer(){
-    pinMode(BUZZER_PIN,OUTPUT);
-    digitalWrite(BUZZER_PIN,LOW);
+#include <Arduino.h>
+
+#include "config.h"
+
+// =====================================================
+// INITIALIZE BUZZER
+// =====================================================
+
+void init_buzzer()
+{
+    pinMode(BUZZER_PIN, OUTPUT);
+    digitalWrite(BUZZER_PIN, LOW);
 }
 
-void dizzyBeep(){
-    tone(BUZZER_PIN,1000,150);
+// =====================================================
+// DIZZY BEEP
+// =====================================================
+
+void dizzy_beep()
+{
+    tone(BUZZER_PIN, 1000, 150);
     delay(100);
-    tone(BUZZER_PIN,700,150);
+    tone(BUZZER_PIN, 700, 150);
     delay(100);
     noTone(BUZZER_PIN);
 }

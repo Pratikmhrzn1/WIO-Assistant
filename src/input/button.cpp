@@ -6,30 +6,18 @@
 // INITIALIZE BUTTONS
 // =====================================================
 
-void initButtons()
+void init_buttons()
 {
-    pinMode(
-        BUTTON_A,
-        INPUT_PULLUP
-    );
-
-    pinMode(
-        BUTTON_B,
-        INPUT_PULLUP
-    );
-
-    pinMode(
-        BUTTON_C,
-        INPUT_PULLUP
-    );
+    pinMode(BUTTON_A, INPUT_PULLUP);
+    pinMode(BUTTON_B, INPUT_PULLUP);
+    pinMode(BUTTON_C, INPUT_PULLUP);
 }
-
 
 // =====================================================
 // BUTTON PRESSED
 // =====================================================
 
-bool buttonPressed(int button)
+bool button_pressed(int button)
 {
     // Button pressed
     if (digitalRead(button) == LOW)

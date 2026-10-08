@@ -1,6 +1,5 @@
 #pragma once
 
-void initButtons();
+void init_buttons();
 
-bool buttonPressed(int button);
-
+bool button_pressed(int button);

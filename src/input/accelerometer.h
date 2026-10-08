@@ -1,5 +1,5 @@
 #pragma once
 
-void initAccelerometer();
+void init_accelerometer();
 
-bool shakeDetected();
+bool shake_detected();

@@ -1,11 +1,11 @@
 #pragma once
 
-void blinkAnimation();
+void blink_animation();
 
-void happyAnimation();
+void happy_animation();
 
-void sleepyAnimation();
+void sleepy_animation();
 
-void surprisedAnimation();
+void surprised_animation();
 
-void dizzyAnimation();
+void dizzy_animation();

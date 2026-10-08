@@ -18,14 +18,16 @@ A face-changing emoji bot for the **Seeed Wio Terminal**. It draws a cartoon fac
 1. [Hardware & Project Layout](#1-hardware--project-layout)
 2. [Step-by-Step Build Guide](#2-step-by-step-build-guide)
 3. [How the Code Is Organized](#3-how-the-code-is-organized)
-4. [Library-by-Library Explainer](#4-library-by-library-explainer)
-5. [The Display Side](#5-the-display-side)
-6. [The Animation Side](#6-the-animation-side)
-7. [Input: Buttons, Accelerometer, Buzzer](#7-input-buttons-accelerometer-buzzer)
-8. [The Main Loop](#8-the-main-loop)
-9. [Configuration Reference (`config.h`)](#9/configuration-reference-configh)
-10. [Adding Your Own Expression](#10-adding-your-own-expression)
-11. [Troubleshooting](#11-troubleshooting)
+4. [Naming Conventions](#4-naming-conventions)
+5. [Library-by-Library Explainer](#5-library-by-library-explainer)
+6. [The Display Side](#6-the-display-side)
+7. [The Face System (table-driven)](#7-the-face-system-table-driven)
+8. [The Animation Side](#8-the-animation-side)
+9. [Input: Buttons, Accelerometer, Buzzer](#9-input-buttons-accelerometer-buzzer)
+10. [The Main Loop](#10-the-main-loop)
+11. [Configuration Reference (`config.h`)](#11-configuration-reference-configh)
+12. [Adding Your Own Expression](#12-adding-your-own-expression)
+13. [Troubleshooting](#13-troubleshooting)
 
 ---
 
@@ -44,37 +46,44 @@ A face-changing emoji bot for the **Seeed Wio Terminal**. It draws a cartoon fac
 
 ```
 WioFaceChanger/
-├── platformio.ini          ← build config + library dependencies
+├── platformio.ini              ← build config + library dependencies
 ├── include/
-│   └── config.h            ← screen size, colors, pin aliases
+│   └── config.h                ← screen size, colors, pin aliases
 ├── src/
-│   ├── main.cpp            ← setup() + loop() — the orchestrator
+│   ├── main.cpp                ← setup() + loop() — the orchestrator
 │   ├── display/
-│   │   ├── display.h       ← declares the shared `tft` object
-│   │   └── display.cpp     ← creates + initializes `tft`
-│   ├── face/
-│   │   ├── face.h          ← FaceExpression enum + draw prototypes
-│   │   └── face.cpp        ← all shape-drawing code (726 lines)
+│   │   ├── display.h           ← declares the shared `tft` object
+│   │   └── display.cpp         ← creates + initializes `tft`
+│   ├── face/                   ← ALL screen drawing lives here
+│   │   ├── face.h              ← public API (enum + 6 functions)
+│   │   ├── face.cpp            ← generic renderer + thin wrappers
+│   │   ├── face_data.h         ← every expression as a data table
+│   │   ├── primitives.h        ← drawing vocabulary (shapes + builders)
+│   │   └── primitives.cpp      ← draws one shape / one eye / cheeks
 │   ├── animations/
-│   │   ├── animation.h     ← 5 animation prototypes
-│   │   └── animation.cpp   ← keyframe sequences built from face draws
+│   │   ├── animation.h         ← 5 animation prototypes
+│   │   └── animation.cpp       ← keyframe sequences (pure timing)
 │   └── input/
 │       ├── button.h/.cpp       ← debounced button reading
 │       ├── accelerometer.h/.cpp← shake detection
 │       └── buzzer.h/.cpp       ← beep sounds
-├── lib/                    ← for *your* private libraries (empty)
-└── test/                   ← for unit tests (empty)
+├── lib/                        ← for *your* private libraries (empty)
+└── test/                       ← for unit tests (empty)
 ```
 
-**Design rule of thumb:** dependencies only point *downward*.
+**Two design rules:**
 
-```
-main.cpp  →  animations  →  face  →  display  →  TFT_eSPI
-   ↓            ↓           ↓
- input/      config.h    config.h
-```
+1. Dependencies only point *downward*:
 
-Nothing in `face/` knows about buttons. Nothing in `display/` knows about faces.
+   ```
+   main.cpp  →  animations  →  face  →  display  →  TFT_eSPI
+       ↓            ↓           ↓
+    input/       face_data.h  primitives
+   ```
+
+2. **Only `src/face/` and `src/display/` may touch the screen.** Nothing in
+   `main.cpp` or `animations/` calls `tft.*` — all drawing is centralized behind the
+   `draw_*` API in `face.h`. `animations/` is pure sequencing.
 
 ---
 
@@ -125,6 +134,9 @@ lib_deps =                     ; libraries auto-downloaded into .pio/libdeps/
 | `framework = arduino` | Pulls in `Arduino.h`, `setup()`, `loop()`, `millis()`, `digitalRead()`, `tone()`, `Wire`… |
 | `lib_deps` | Declared dependencies. On first build PlatformIO clones them into `.pio/libdeps/seeed_wio_terminal/`. |
 
+> `TFT_eSPI` itself is **not** in `lib_deps` — the Seeed Arduino framework already
+> ships it at `framework-arduino-samd-seeed/libraries/Seeed_Arduino_LCD/`.
+
 ### Step 3 — First build
 
 ```bash
@@ -135,10 +147,13 @@ What happens, in order:
 
 1. PlatformIO reads `platformio.ini`.
 2. Downloads missing toolchain + libraries (first run only, ~1–2 min).
-3. Compiles every `.cpp` under `src/` (and each library's sources) into `.o` files in
-   `.pio/build/seeed_wio_terminal/`.
+3. Compiles every `.cpp` under `src/` **recursively** (so new subfolders need no
+   config change) plus each library's sources, into `.pio/build/seeed_wio_terminal/`.
 4. Links them into `firmware.elf`, then converts to `firmware.bin`.
 5. Reports flash/RAM usage.
+
+Include paths are pre-wired: `#include "config.h"` resolves against `include/`, and
+`#include "face/face.h"` resolves against `src/`.
 
 ### Step 4 — Upload to the board
 
@@ -181,18 +196,18 @@ Edit a file → `pio run -t upload` → observe. PlatformIO only recompiles what
 
 ```
 setup():
-    Serial → Display → Buttons → Accelerometer → Buzzer → draw normal face
+    Serial → Display → Buttons → Accelerometer → Buzzer → draw_normal_face()
 
 loop():
-    shake detected?  → DIZZY  → dizzyBeep()   → dizzyAnimation()     → back to NORMAL
-    button A?        → HAPPY                   → happyAnimation()     → back to NORMAL
-    button B?        → SLEEPY                  → sleepyAnimation()    → back to NORMAL
-    button C?        → SURPRISED               → surprisedAnimation() → back to NORMAL
+    shake detected?  → DIZZY  → dizzy_beep()    → dizzy_animation()     → NORMAL
+    button A?        → HAPPY                    → happy_animation()     → NORMAL
+    button B?        → SLEEPY                   → sleepy_animation()    → NORMAL
+    button C?        → SURPRISED                → surprised_animation() → NORMAL
     else             → delay(10)   (idle tick)
 ```
 
-The global `FaceExpression currentExpression` tracks what's on screen. It's set before
-each animation and reset to `NORMAL` after — animations are self-contained
+The global `face_expression_t current_expression` tracks what's on screen. It's set
+before each animation and reset to `NORMAL` after — animations are self-contained
 "reactions" that always end where they started.
 
 Each subsystem exposes an **init function** called once in `setup()` and a small
@@ -200,18 +215,36 @@ Each subsystem exposes an **init function** called once in `setup()` and a small
 
 | Module | Init | API |
 |---|---|---|
-| display | `initDisplay()` | `tft` (global) |
-| buttons | `initButtons()` | `buttonPressed(pin)` |
-| accelerometer | `initAccelerometer()` | `shakeDetected()` |
-| buzzer | `initBuzzer()` | `dizzyBeep()` |
-| face | — | `drawNormalFace()`, `drawHappyFace()`, … |
-| animation | — | `happyAnimation()`, `blinkAnimation()`, … |
+| `display/` | `init_display()` | `tft` (global) |
+| `input/button` | `init_buttons()` | `button_pressed(pin)` |
+| `input/accelerometer` | `init_accelerometer()` | `shake_detected()` |
+| `input/buzzer` | `init_buzzer()` | `dizzy_beep()` |
+| `face/` | — | `draw_normal_face()`, `draw_happy_face()`, `draw_surprised_face()`, `draw_dizzy_face()`, `draw_blink_frame()`, `draw_sleepy_frame(lid_y)` |
+| `animations/` | — | `happy_animation()`, `blink_animation()`, `sleepy_animation()`, `surprised_animation()`, `dizzy_animation()` |
+
+**The whole public drawing API is 6 functions.** Everything else in `src/face/` is
+internal implementation detail and is invisible to the rest of the program.
 
 ---
 
-## 4. Library-by-Library Explainer
+## 4. Naming Conventions
 
-### 4.1 `TFT_eSPI` (from `Seeed_Arduino_LCD`)
+| Kind | Style | Example |
+|---|---|---|
+| Functions, variables, types | `snake_case` | `draw_normal_face`, `current_expression`, `face_spec_t` |
+| File names | `snake_case` | `face_data.h`, `primitives.cpp` |
+| Constants & macros | `SCREAMING_SNAKE` | `BG_COLOR`, `SPEC_NORMAL`, `SHAKE_THRESHOLD` |
+| Enumerators | `SCREAMING_SNAKE` | `NORMAL`, `HAPPY`, `EYE_FILLED` |
+| Third-party APIs | left as shipped | `tft.drawLine()`, `digitalRead()`, `lis.getAccelerationX()` |
+
+Type names carry a `_t` suffix (`face_spec_t`, `prim_t`, `eye_style_t`) so they're
+visually distinct from functions and instances.
+
+---
+
+## 5. Library-by-Library Explainer
+
+### 5.1 `TFT_eSPI` (from `Seeed_Arduino_LCD`)
 
 A fast, popular Arduino graphics library for SPI TFT displays. The Wio Terminal ships
 with a Seeed-maintained fork pre-configured for its built-in screen, so you don't have
@@ -240,7 +273,7 @@ Call `fillCircle()` and those pixels are permanently changed until something els
 overwrites them. That's why every face draw starts with `fillScreen()`: it's the
 only way to "erase" the previous frame.
 
-### 4.2 `LIS3DHTR` (Seeed's accelerometer driver)
+### 5.2 `LIS3DHTR` (Seeed's accelerometer driver)
 
 A C++ driver for the ST LIS3DH 3-axis accelerometer over I²C.
 
@@ -262,38 +295,40 @@ A C++ driver for the ST LIS3DH 3-axis accelerometer over I²C.
 - **Data rate vs. resolution:** 25 Hz means new samples every 40 ms. `loop()` polls
   far faster than that, so consecutive reads often return the same value — harmless.
 - **Full-scale range:** ±2 g means the reported value clips at ±2.0. For a shake
-  threshold of 2.5 g *magnitude* (see §7.2), the combined vector of all three axes is
+  threshold of 2.5 g *magnitude* (see §9.2), the combined vector of all three axes is
   what exceeds the limit, not a single axis.
 
-### 4.3 Arduino core functions used
+### 5.3 Arduino core functions used
 
 | Function | Where | Purpose |
 |---|---|---|
 | `Serial.begin(115200)` | `setup()` | Start USB serial at 115200 baud for debug prints. |
-| `pinMode(pin, INPUT_PULLUP)` | `initButtons()` | Configure a pin as input with the internal pull-up resistor enabled → pin idles `HIGH`, reads `LOW` when the button connects it to ground. |
-| `digitalRead(pin)` | `buttonPressed()` | Read a digital pin → `HIGH` or `LOW`. |
-| `pinMode(pin, OUTPUT)` / `digitalWrite(pin, LOW)` | `initBuzzer()` | Ensure the buzzer starts silent. |
-| `tone(pin, freq, duration)` | `dizzyBeep()` | Generate a square wave of `freq` Hz on `pin` for `duration` ms — makes the piezo buzz. |
-| `noTone(pin)` | `dizzyBeep()` | Stop the wave. |
+| `pinMode(pin, INPUT_PULLUP)` | `init_buttons()` | Configure a pin as input with the internal pull-up resistor enabled → pin idles `HIGH`, reads `LOW` when the button connects it to ground. |
+| `digitalRead(pin)` | `button_pressed()` | Read a digital pin → `HIGH` or `LOW`. |
+| `pinMode(pin, OUTPUT)` / `digitalWrite(pin, LOW)` | `init_buzzer()` | Ensure the buzzer starts silent. |
+| `tone(pin, freq, duration)` | `dizzy_beep()` | Generate a square wave of `freq` Hz on `pin` for `duration` ms — makes the piezo buzz. |
+| `noTone(pin)` | `dizzy_beep()` | Stop the wave. |
 | `delay(ms)` | everywhere | **Blocking** pause. Nothing else runs during it — this is what paces the animations. |
-| `millis()` | `shakeDetected()` | Milliseconds since boot, free-running. Used for non-blocking timing (the cooldown). |
-| `sqrt(x*x + y*y + z*z)` | `shakeDetected()` | Vector magnitude of the 3-axis acceleration. |
+| `millis()` | `shake_detected()` | Milliseconds since boot, free-running. Used for non-blocking timing (the cooldown). |
+| `sqrt(x*x + y*y + z*z)` | `shake_detected()` | Vector magnitude of the 3-axis acceleration. |
 
-### 4.4 C++ language features used
+### 5.4 C++ language features used
 
 | Feature | Example | Why it's used |
 |---|---|---|
 | `#pragma once` | top of every `.h` | Include-guard — prevents double-definition when a header is included from multiple files. |
 | `extern` | `extern TFT_eSPI tft;` in `display.h` | "This variable exists, defined in *another* file." Lets every module share one LCD object without duplicate-definition linker errors. |
 | `constexpr int` | `SCREEN_WIDTH = 320` in `config.h` | Compile-time constant, typed (unlike `#define`), doesn't pollute the preprocessor. |
+| `constexpr` arrays & functions | `BROWS_NORMAL[]`, `prim_line(...)` in `face_data.h` | Whole expression tables are computed at compile time and land in flash, not RAM. |
 | `#define` alias | `#define BUTTON_A WIO_KEY_A` | Short, readable names for board pin macros. |
-| `enum FaceExpression` | `face.h` | A named set of values (`NORMAL`=0, `HAPPY`=1, …). Makes `currentExpression` self-documenting. |
-| **Default arguments** | `void drawNormalFace(int offsetX = 0, int offsetY = 0)` | Callers can omit the offsets: `drawNormalFace()` still compiles. |
-| `.cpp` / `.h` split | every module | Header = contract (what exists). Source = implementation (how it works). Keeps compile times low and prevents duplicate symbol errors. |
+| `enum` | `face_expression_t`, `eye_style_t` | A named set of values. Makes `current_expression` and `spec.style` self-documenting. |
+| **Default arguments** | `void draw_normal_face(int offset_x = 0, int offset_y = 0)` | Callers can omit the offsets: `draw_normal_face()` still compiles. |
+| `static` file-scope function | `render_face(...)` in `face.cpp` | Internal helper — invisible outside the file, so it can't clash with anything. |
+| `.h` / `.cpp` split | every module | Header = contract (what exists). Source = implementation (how it works). Keeps compile times low and prevents duplicate symbol errors. |
 
 ---
 
-## 5. The Display Side
+## 6. The Display Side
 
 Three files, and the whole job of the layer is to own **one shared object**.
 
@@ -301,13 +336,14 @@ Three files, and the whole job of the layer is to own **one shared object**.
 // display.h
 #pragma once
 #include <TFT_eSPI.h>
-extern TFT_eSPI tft;      // "declared elsewhere — just let me use it"
-void initDisplay();
+extern TFT_eSPI tft;          // "declared elsewhere — just let me use it"
+void init_display();
 
 // display.cpp
-TFT_eSPI tft = TFT_eSPI(); // ← THE one instance, constructed here
+TFT_eSPI tft = TFT_eSPI();    // ← THE one instance, constructed here
 
-void initDisplay() {
+void init_display()
+{
     tft.begin();                  // 1. wake the LCD controller
     tft.setRotation(3);           // 2. landscape, origin top-left, 320×240
     tft.fillScreen(BG_COLOR);     // 3. clear to black
@@ -316,8 +352,7 @@ void initDisplay() {
 
 **Why `extern` matters:** if each `.cpp` file wrote `TFT_eSPI tft;`, the linker would
 find five definitions of the same symbol and fail. `display.cpp` *defines* it once;
-everyone else *declares* it. The `#include "config.h"` in `display.cpp` pulls in
-`BG_COLOR`.
+everyone else *declares* it.
 
 **Rotation explained:** `setRotation(0..3)` cycles through 0°/90°/180°/270°. On the
 Wio Terminal, `3` is the natural landscape orientation (buttons on the right, USB on
@@ -329,24 +364,188 @@ the left), giving `SCREEN_WIDTH = 320` and `SCREEN_HEIGHT = 240`.
 (0,0) ──────────────────────────► x (0..319)
   │
   │      eyebrows ~ y 45–70
-  │      eyes      ~ y 110 (center y = 120)
+  │      eyes      ~ y 108–115 (centre y = 120)
   │      cheeks    ~ y 165
-  │      mouth     ~ y 175–183
+  │      mouth     ~ y 174–183
   ▼
 y (0..239)
 ```
 
-The face is drawn slightly *above* vertical center (eyes at y≈110 vs. center 120),
+The face is drawn slightly *above* vertical centre (eyes at y≈110 vs. centre 120),
 which leaves comfortable room for the mouth and reads as a "head" rather than a
 centered diagram.
 
 ---
 
-## 6. The Animation Side
+## 7. The Face System (table-driven)
 
-This is the part worth studying, because it uses a technique worth naming.
+This is the core of the project. `src/face/` is split into three layers:
 
-### 6.1 There is no animation engine
+```
+face.h          what the rest of the program may call      ( 34 lines)
+face.cpp        one generic renderer + 6 thin wrappers     (125 lines)
+face_data.h     every expression, as pure data             (137 lines)
+primitives.h    the drawing vocabulary: shape struct +     ( 69 lines)
+                constexpr builders + prototypes
+primitives.cpp  actually puts pixels on screen             (104 lines)
+```
+
+### 7.1 The insight: expressions are data, not code
+
+The old design had 19 functions — `draw_normal_mouth()`, `draw_happy_eyebrows()`,
+`draw_surprised_face()`, … — each one a wall of `tft.drawLine(...)` calls. But every
+one of them was just *a list of coordinates*.
+
+So instead of code per expression, the project stores **tables**:
+
+```cpp
+constexpr prim_t BROWS_HAPPY[] = {
+    prim_line(75, 58, 125, 50, TFT_WHITE),
+    prim_line(195, 50, 245, 58, TFT_WHITE),
+};
+
+constexpr prim_t MOUTH_HAPPY[] = {
+    prim_line(140, 170, 150, 180, MOUTH_COLOR),
+    prim_line(150, 180, 160, 183, MOUTH_COLOR),
+    prim_line(160, 183, 170, 180, MOUTH_COLOR),
+    prim_line(170, 180, 180, 170, MOUTH_COLOR),
+};
+
+constexpr face_spec_t SPEC_HAPPY = {
+    BROWS_HAPPY, 2, MOUTH_HAPPY, 4,   // shape tables + how many of each
+    EYE_FILLED, 108,                   // eye style + base y
+    40, 25, 14,                        // sclera / iris / pupil radius
+    0, 0};                             // socket radius / lid half-width
+```
+
+Everything about "happy" now lives in one contiguous block. To make the smile
+bigger you edit a number — you don't scroll past 90 lines of banner comments to
+find the fourth segment of a mouth function.
+
+### 7.2 The vocabulary: `prim_t`
+
+A single struct covers every shape the faces use:
+
+```cpp
+struct prim_t
+{
+    uint8_t   kind;    // PRIM_LINE | PRIM_FILL_CIRCLE | PRIM_RING
+    uint16_t  color;   // RGB565
+    int16_t   x0, y0;  // line start, or circle centre
+    int16_t   x1, y1;  // line end   (circles: x1 = radius)
+};
+```
+
+Two `constexpr` factory functions make the tables readable — you never see a brace
+list of raw numbers:
+
+```cpp
+prim_line(x0, y0, x1, y1, color)   // a line segment
+prim_disc(x, y, r, color)          // a filled circle
+```
+
+`draw_prim(shape, offset_x, offset_y)` is the one function that turns a `prim_t`
+into a `tft.*` call, and it's also where the frame offset gets applied.
+
+### 7.3 The vocabulary: eyes, cheeks
+
+Eyes are too structured to be plain tables, so they get dedicated functions in
+`primitives.cpp`:
+
+- **`draw_eye(x, y, radius, iris_radius, pupil_radius)`** — four stacked
+  `fillCircle`s, back to front:
+
+  ```
+  fillCircle(radius)          white sclera
+    fillCircle(iris, y+3)     cyan iris, 3px below centre
+      fillCircle(pupil, y+5)  black pupil, 5px below centre
+        fillCircle(-7,-8, 6)  big specular highlight, up-left
+        fillCircle(+7,-2, 3)  small highlight, right
+  ```
+
+  The downward offsets simulate a slight "looking at you" gaze; the two asymmetric
+  white dots simulate a light reflection and are what give the eye life.
+
+- **`draw_x_eye(x, y, radius)`** — hollow `drawCircle` socket + two crossing lines
+  (the classic "knocked out" cartoon `X`).
+
+- **`draw_closed_eye(center_x, y, half_width)`** — one horizontal lid line.
+
+- **`draw_cheeks(offset_x, offset_y)`** — the two blush circles.
+
+### 7.4 The renderer
+
+`face.cpp` contains exactly one drawing function, and it knows nothing about any
+particular expression:
+
+```cpp
+static void render_face(const face_spec_t &spec, int offset_x = 0, int offset_y = 0)
+{
+    tft.fillScreen(BG_COLOR);                              // 1. erase
+
+    for (...) draw_prim(spec.brows[i], ...);               // 2. eyebrows
+
+    switch (spec.style)                                    // 3. eyes
+    {
+        case EYE_FILLED:  draw_eye(...)    x2; break;
+        case EYE_CLOSED:  draw_closed_eye(...) x2; break;
+        case EYE_X_MARK:  draw_x_eye(...)  x2; break;
+    }
+
+    draw_cheeks(offset_x, offset_y);                       // 4. cheeks
+
+    for (...) draw_prim(spec.mouths[i], ...);              // 5. mouth
+}
+```
+
+**Painter's algorithm** — shapes are painted back-to-front, so later shapes occlude
+earlier ones. That ordering (brows → eyes → cheeks → mouth) is what makes the result
+read as a face.
+
+The public wrappers are one line each:
+
+```cpp
+void draw_normal_face(int offset_x, int offset_y) { render_face(SPEC_NORMAL, offset_x, offset_y); }
+void draw_happy_face(int offset_x, int offset_y)  { render_face(SPEC_HAPPY,  offset_x, offset_y); }
+void draw_surprised_face(int offset_y)            { render_face(SPEC_SURPRISED, 0, offset_y); }
+void draw_dizzy_face(int offset_x, int offset_y)  { render_face(SPEC_DIZZY,  offset_x, offset_y); }
+```
+
+### 7.5 The offset trick — pseudo-translation
+
+Every shape is stored at its **absolute** screen position, and `render_face` adds
+`offset_x`/`offset_y` to every coordinate as it draws. Because the frame is fully
+cleared first, shifting the arguments **is** the translation — you never move
+existing pixels, you just draw the next frame somewhere else. This also guarantees
+zero ghosting/smearing.
+
+### 7.6 Two special frames
+
+Not every frame is a whole expression:
+
+- **`draw_blink_frame()`** — normal brows + mouth with the lids shut
+  (`SPEC_BLINK`, lid half-width 35 → spans x 65–135 and 185–255).
+- **`draw_sleepy_frame(int lid_y)`** — the sleepy expression with the lid line placed
+  wherever the animation asks:
+
+  ```cpp
+  void draw_sleepy_frame(int lid_y)
+  {
+      face_spec_t spec = SPEC_SLEEPY;   // copy the table row
+      spec.eye_y = lid_y;               // move just the lid
+      render_face(spec);
+  }
+  ```
+
+  Copying a small `constexpr` struct and tweaking one field is how a *parameterized*
+  frame fits into a data-driven design. It lets the sleepy animation lower the lid
+  one 3 px step at a time.
+
+---
+
+## 8. The Animation Side
+
+### 8.1 There is no animation engine
 
 No frame buffer of poses, no easing curves, no delta-time, no sprite system. An
 animation is simply:
@@ -357,125 +556,98 @@ The gaps between draws are your brain's job: it perceives continuous motion from
 handful of discrete keyframes. This is exactly how classic flipbook / cel animation
 works, and on a 320×240 screen it's more than convincing.
 
-### 6.2 The offset trick — pseudo-translation
+Because §7 centralizes all drawing, `animation.cpp` contains **zero** `tft.*` calls —
+it is pure timing. Total: 198 lines, 5 functions.
 
-Every face function accepts `offsetX`/`offsetY` (default `0`), and adds them to every
-coordinate:
+### 8.2 Each animation, keyframe by keyframe
 
-```cpp
-void drawNormalEyes(int offsetX, int offsetY) {
-    drawLeftEye(100 + offsetX, 110 + offsetY, 38, 23, 13);
-    drawRightEye(220 + offsetX, 110 + offsetY, 38, 23, 13);
-}
-```
-
-Because the whole face is redrawn anyway (via `fillScreen()` first), shifting the
-arguments **is** the translation. You never move pixels — you just draw the next
-frame somewhere else. This also means there's no ghosting/smearing: full clear +
-redraw each keyframe.
-
-### 6.3 The layering order (painter's algorithm)
-
-Every face draw happens back-to-front, so later shapes occlude earlier ones:
+**`blink_animation()`** — a *partial* redraw:
 
 ```
-1. fillScreen(BG_COLOR)     ← erase everything
-2. eyebrows                 ← farthest back, nothing covers them
-3. eyes                     ← sclera, then iris, then pupil, then highlights
-4. cheeks
-5. mouth                    ← drawn last, on top
+draw_blink_frame()   hold 100 ms
+draw_normal_face()   hold 100 ms
 ```
 
-Within an eye, the stacking is what makes it look like an eye:
+Total ≈ 200 ms — roughly the duration of a real blink. It runs on its own *and* as
+the finale of `happy_animation()`.
+
+**`happy_animation()`** — a hop:
 
 ```
-fillCircle(eyeSize)         white sclera
-  fillCircle(irisSize)      cyan iris, offset +3px down
-    fillCircle(pupilSize)   black pupil, offset +5px down
-      fillCircle(6) white   big specular highlight, up-left
-      fillCircle(3) white   small highlight, right
+frame  draw_happy_face(0,  0)   hold 150 ms
+frame  draw_happy_face(0, -5)   hold 100 ms   ← lifts up
+frame  draw_happy_face(0, +5)   hold 100 ms   ← drops down (overshoot)
+frame  draw_happy_face(0,  0)   hold 200 ms   ← settles
+       blink_animation()                       ← adds life
+       draw_normal_face()                      ← return to idle
 ```
 
-The downward offsets (`+3`, `+5`) simulate a slight "looking at you" gaze; the two
-asymmetric white dots simulate light reflection and are what give the eye life.
+Note it *overshoots* downward before settling — a crude but effective bounce /
+anticipation curve. `SPEC_HAPPY` also uses bigger eyes (40/25/14 vs. 38/23/13) and
+higher-arched brows, so the *expression* differs too, not just the position.
 
-### 6.4 Each animation, keyframe by keyframe
-
-**`blinkAnimation()`** — a *partial* redraw. It does **not** call a face function;
-it manually clears, draws brows, and replaces each eye with a single horizontal
-`drawLine` at y=110 (a closed lid). 100 ms closed, then `drawNormalFace()` restores
-everything. Total ≈ 200 ms — roughly the duration of a real blink.
-
-**`happyAnimation()`** — a hop:
-
-```
-frame  drawHappyFace(0,  0)   hold 150 ms
-frame  drawHappyFace(0, -5)   hold 100 ms   ← lifts up
-frame  drawHappyFace(0, +5)   hold 100 ms   ← drops down (overshoot)
-frame  drawHappyFace(0,  0)   hold 200 ms   ← settles
-       blinkAnimation()                     ← adds life
-       drawNormalFace()                     ← return to idle
-```
-
-Note it *overshoots* downward before settling — that's a crude but effective
-bounce/anticipation curve. Also note `drawHappyFace` uses bigger eyes
-(r 40/25/14 vs. 38/23/13) and higher-arched brows for the expression itself.
-
-**`sleepyAnimation()`** — the one animation that uses a **loop** instead of literal
+**`sleepy_animation()`** — the one animation that uses a **loop** instead of literal
 keyframes:
 
 ```cpp
-for (int i = 0; i < 3; i++) {
-    tft.fillScreen(BG_COLOR);
-    drawSleepyEyebrows();
-    int y = 108 + (i * 3);      // eyelid line descends 3px per frame
-    tft.drawLine(70, y, 130, y, EYE_COLOR);   // left lid
-    tft.drawLine(190, y, 250, y, EYE_COLOR);  // right lid
-    drawCheeks();
-    drawSleepyMouth();
+for (int i = 0; i < 3; i++)
+{
+    draw_sleepy_frame(108 + (i * 3));   // lid descends 3px per frame
     delay(120);
 }
-delay(500);          // stay asleep
-// wake up: 3 × normal face at 100 ms — a quick flicker back to alert
+
+delay(500);                    // stay asleep
+
+for (int i = 0; i < 3; i++)    // wake up: quick flicker back to alert
+{
+    draw_normal_face();
+    delay(100);
+}
 ```
 
 Gradual descent (3 frames × 3 px) reads as *slowly closing*, which is the whole
 point of "sleepy" — vs. the instant 100 ms snap of a blink.
 
-**`surprisedAnimation()`** — vertical bounce of the eye sizes via `offsetY`:
+**`surprised_animation()`** — vertical bounce of the eye sizes:
 
 ```
-drawNormalFace()          100 ms   baseline
-drawSurprisedFace(-3)     120 ms   eyes shrink slightly (anticipation)
-drawSurprisedFace(0)      120 ms   normal surprised size
-drawSurprisedFace(+3)     120 ms   eyes bulge — the "pop"
-drawSurprisedFace(0)      500 ms   hold the reaction
-drawNormalFace()                   recover
+draw_normal_face()            100 ms   baseline
+draw_surprised_face(-3)       120 ms   eyes shrink slightly (anticipation)
+draw_surprised_face(0)        120 ms   normal surprised size
+draw_surprised_face(+3)       120 ms   eyes bulge — the "pop"
+draw_surprised_face(0)        500 ms   hold the reaction
+draw_normal_face()                     recover
 ```
 
-The surprised face itself uses the largest eyes in the app (43/27/15), raised brows
-(y 45 vs. y 60), and a round "O" mouth built from two `fillCircle`s (dark ring =
-outer mouth color, background-colored inner circle = open hole).
+`SPEC_SURPRISED` has the largest eyes in the app (43/27/15), raised brows (y 45 vs.
+y 60), and a round "O" mouth built from two discs — a dark ring with the background
+punched out:
 
-**`dizzyAnimation()`** — the widest, fastest movement:
+```cpp
+constexpr prim_t MOUTH_SURPRISED[] = {
+    prim_disc(160, 180, 10, MOUTH_COLOR),   // outer
+    prim_disc(160, 180, 6,  BG_COLOR),      // hole
+};
+```
+
+**`dizzy_animation()`** — the widest, fastest movement:
 
 ```
-(0, 0)   100 ms
-(-8, 0)   80 ms   ← hard left
-(+8, 0)   80 ms   ← hard right
-(-6, +3)  80 ms   ← left + dip
-(+6, -3)  80 ms   ← right + rise
-(0, 0)   300 ms   ← settle, still dazed
-normal    150 ms   ← recover
+(0, 0)    100 ms
+(-8, 0)    80 ms   ← hard left
+(+8, 0)    80 ms   ← hard right
+(-6, +3)   80 ms   ← left + dip
+(+6, -3)   80 ms   ← right + rise
+(0, 0)    300 ms   ← settle, still dazed
+normal     150 ms   ← recover
 ```
 
 Short 80 ms holds + large ±8 px offsets = jittery. The alternating vertical tilt
 (`+3`/`-3`) breaks the purely horizontal motion so it looks disoriented rather than
-sliding. The face itself is unique: **outline** circles + two crossing lines per eye
-(an `X`, the classic "knocked out" cartoon symbol) instead of filled eyes, tilted
-opposing brows, and a zig-zag wobbly mouth built from 4 short segments.
+sliding. `SPEC_DIZZY` uses `EYE_X_MARK` — outline rings instead of filled eyes —
+plus tilted opposing brows and a zig-zag wobbly mouth.
 
-### 6.5 Timing cheat-sheet
+### 8.3 Timing cheat-sheet
 
 | Animation | Frames | Total duration | Motion character |
 |---|---|---|---|
@@ -485,7 +657,7 @@ opposing brows, and a zig-zag wobbly mouth built from 4 short segments.
 | surprised | 4 + hold | ~980 ms | anticipation → pop |
 | dizzy | 5 + hold | ~940 ms | fast, erratic |
 
-### 6.6 Known trade-offs (and why they're fine here)
+### 8.4 Known trade-offs (and why they're fine here)
 
 - **`delay()` is blocking.** During an animation, buttons and shake are ignored.
   For a toy face that's desirable — reactions are atomic events. If you needed
@@ -493,16 +665,16 @@ opposing brows, and a zig-zag wobbly mouth built from 4 short segments.
 - **Full `fillScreen()` each frame.** Wasteful (you're erasing pixels you'll redraw),
   but simple and 100% free of artifacts. On this display a full clear is a few ms.
 - **No easing functions.** Keyframes are evenly timed. Adding ease-in/out would mean
-  computing interpolated offsets — a nice upgrade described in §10.
+  computing interpolated offsets — a nice upgrade described in §12.
 
 ---
 
-## 7. Input: Buttons, Accelerometer, Buzzer
+## 9. Input: Buttons, Accelerometer, Buzzer
 
-### 7.1 Buttons (`input/button.cpp`)
+### 9.1 Buttons (`input/button.cpp`)
 
 ```cpp
-void initButtons() {
+void init_buttons() {
     pinMode(BUTTON_A, INPUT_PULLUP);   // and B, C
 }
 ```
@@ -512,7 +684,7 @@ the button shorts it to ground. So `digitalRead()` returns `HIGH` when idle and 
 when pressed. `INPUT_PULLUP` enables the MCU's internal resistor so you don't need an
 external one.
 
-**`buttonPressed()` — three-stage debounce + edge detection:**
+**`button_pressed()` — three-stage debounce + edge detection:**
 
 ```cpp
 if (digitalRead(button) == LOW) {      // 1. looks pressed?
@@ -529,32 +701,32 @@ return false;
   close, producing a burst of rapid HIGH/LOW transitions. Without debounce you'd get
   3–5 "presses" per physical press. The 30 ms wait rides it out.
 - **Wait-for-release:** this converts *level* (held) into a single *event* (pressed).
-  Without it, holding button A would re-trigger `happyAnimation()` hundreds of times
+  Without it, holding button A would re-trigger `happy_animation()` hundreds of times
   per second.
 
 The trade-off: this function blocks while held, and it's called sequentially in
 `loop()` — so only one button can be handled per pass, and A wins over B over C.
 Perfectly acceptable for this device.
 
-### 7.2 Accelerometer / shake (`input/accelerometer.cpp`)
+### 9.2 Accelerometer / shake (`input/accelerometer.cpp`)
 
 ```cpp
-constexpr float SHAKE_THRESHOLD   = 2.5f;   // g — total acceleration magnitude
-constexpr unsigned long SHAKE_COOLDOWN = 800; // ms between accepted shakes
-unsigned long lastShakeTime = 0;
+constexpr float SHAKE_THRESHOLD       = 2.5f;   // g — total acceleration magnitude
+constexpr unsigned long SHAKE_COOLDOWN = 800;    // ms between accepted shakes
+unsigned long last_shake_time = 0;
 ```
 
 ```cpp
-bool shakeDetected() {
+bool shake_detected() {
     if (!lis.available()) return false;
 
     float x = lis.getAccelerationX(), y = ..., z = ...;
     float magnitude = sqrt(x*x + y*y + z*z);   // vector length
 
-    if (millis() - lastShakeTime < SHAKE_COOLDOWN) return false;  // rate limit
+    if (millis() - last_shake_time < SHAKE_COOLDOWN) return false;  // rate limit
 
     if (magnitude > SHAKE_THRESHOLD) {
-        lastShakeTime = millis();   // reset the timer
+        last_shake_time = millis();   // reset the timer
         return true;
     }
     return false;
@@ -568,19 +740,19 @@ A vigorous shake spikes it well above 2.5 g.
 
 **Why a cooldown?** A single shake produces many consecutive above-threshold samples
 (25 Hz sampling over ~300 ms ⇒ ~7 readings). Without the 800 ms lockout, one shake
-would fire `dizzyAnimation()` repeatedly and the device would appear stuck. `millis()`
+would fire `dizzy_animation()` repeatedly and the device would appear stuck. `millis()`
 gives non-blocking, wraparound-safe timing: `millis() - last` is correct even when
 `millis()` rolls over at ~49.7 days.
 
 **Tuning:** raise `SHAKE_THRESHOLD` if it triggers from normal handling; lower it if
 you have to shake hard. Raise `SHAKE_COOLDOWN` to make it less trigger-happy.
 
-### 7.3 Buzzer (`input/buzzer.cpp`)
+### 9.3 Buzzer (`input/buzzer.cpp`)
 
 ```cpp
-void initBuzzer() { pinMode(BUZZER_PIN, OUTPUT); digitalWrite(BUZZER_PIN, LOW); }
+void init_buzzer() { pinMode(BUZZER_PIN, OUTPUT); digitalWrite(BUZZER_PIN, LOW); }
 
-void dizzyBeep() {
+void dizzy_beep() {
     tone(BUZZER_PIN, 1000, 150);  // 1000 Hz for 150 ms
     delay(100);
     tone(BUZZER_PIN, 700, 150);   // 700 Hz for 150 ms — descending "uh-oh"
@@ -595,23 +767,23 @@ generates a square wave on a PWM pin; the piezo converts it to sound.
 
 ---
 
-## 8. The Main Loop
+## 10. The Main Loop
 
 ```cpp
 void loop() {
-    if (shakeDetected()) {          // checked FIRST — most dramatic reaction
-        currentExpression = DIZZY;
-        dizzyBeep();                // sound plays while the animation runs
-        dizzyAnimation();
-        currentExpression = NORMAL;
-        return;                     // skip the rest of this pass
+    if (shake_detected()) {          // checked FIRST — most dramatic reaction
+        current_expression = DIZZY;
+        dizzy_beep();                // sound plays while the animation runs
+        dizzy_animation();
+        current_expression = NORMAL;
+        return;                      // skip the rest of this pass
     }
 
-    if (buttonPressed(BUTTON_A)) { ... HAPPY ... }   // blocking until released
-    if (buttonPressed(BUTTON_B)) { ... SLEEPY ... }
-    if (buttonPressed(BUTTON_C)) { ... SURPRISED ... }
+    if (button_pressed(BUTTON_A)) { ... HAPPY ... }   // blocking until released
+    if (button_pressed(BUTTON_B)) { ... SLEEPY ... }
+    if (button_pressed(BUTTON_C)) { ... SURPRISED ... }
 
-    delay(10);                      // idle tick — ~100 loop passes/sec
+    delay(10);                       // idle tick — ~100 loop passes/sec
 }
 ```
 
@@ -619,7 +791,7 @@ Reading order:
 
 1. **Shake first** so a vigorous shake isn't mistaken for button activity, and
    `return` gives it exclusive ownership of the pass.
-2. **Buttons are polled**, not interrupt-driven. `buttonPressed()` blocks during
+2. **Buttons are polled**, not interrupt-driven. `button_pressed()` blocks during
    debounce and until release, so there's no way to double-fire.
 3. **`delay(10)`** prevents the loop from spinning at 100% CPU. It costs nothing
    meaningful for responsiveness since everything else is already blocking.
@@ -632,7 +804,7 @@ open the monitor and you can see which event fired without looking at the screen
 
 ---
 
-## 9. Configuration Reference (`config.h`)
+## 11. Configuration Reference (`config.h`)
 
 ```cpp
 constexpr int SCREEN_WIDTH  = 320;   // after setRotation(3)
@@ -655,78 +827,92 @@ constexpr int FACE_CENTER_Y = SCREEN_HEIGHT / 2;  // 120
 ```
 
 **To reskin the whole app**, edit these six color macros — no drawing code changes
-needed. `constexpr` (rather than `#define`) for the sizes means real types, scoping,
-and better compiler diagnostics; `#define` is kept for colors/pins because
-`TFT_WHITE`, `WIO_KEY_A`, etc. are themselves macros and must be substituted
-textually.
+needed. Because `face_data.h` is `constexpr`, the colors are baked in at compile time
+and cost nothing at runtime.
 
-`FACE_CENTER_X/Y` are currently defined but unused — the drawing code hard-codes
-coordinates. See §10 for how you could put them to work.
+`constexpr` (rather than `#define`) for the sizes means real types, scoping, and
+better compiler diagnostics; `#define` is kept for colors/pins because `TFT_WHITE`,
+`WIO_KEY_A`, etc. are themselves macros and must be substituted textually.
+
+`FACE_CENTER_X/Y` are currently defined but unused — the drawing tables hard-code
+coordinates. See §12 for how you could put them to work.
 
 ---
 
-## 10. Adding Your Own Expression
+## 12. Adding Your Own Expression
 
-Say you want a **angry** face on a new button. Five touches:
+Because expressions are data, adding one is mostly copy-paste-a-table-row.
 
 **1. Enum** — `src/face/face.h`:
 
 ```cpp
-enum FaceExpression { NORMAL, HAPPY, SLEEPY, SURPRISED, DIZZY, ANGRY };
+enum face_expression_t { NORMAL, HAPPY, SLEEPY, SURPRISED, DIZZY, ANGRY };
 ```
 
-**2. Parts** — `src/face/face.cpp` (+ declare in `face.h`):
+**2. Tables + spec** — `src/face/face_data.h`:
 
 ```cpp
-void drawAngryEyebrows() {          // steep downward slant toward the nose
-    tft.drawLine(75, 50, 125, 68, TFT_WHITE);
-    tft.drawLine(195, 68, 245, 50, TFT_WHITE);
-}
-void drawAngryMouth() {             // inverted arc = frown
-    tft.drawLine(140, 183, 155, 172, MOUTH_COLOR);
-    tft.drawLine(155, 172, 175, 183, MOUTH_COLOR);
-}
-void drawAngryFace(int offsetX = 0, int offsetY = 0) {
-    tft.fillScreen(BG_COLOR);
-    drawAngryEyebrows();
-    drawLeftEye(100 + offsetX, 110 + offsetY, 36, 22, 12);   // slightly narrowed
-    drawRightEye(220 + offsetX, 110 + offsetY, 36, 22, 12);
-    drawCheeks();
-    drawAngryMouth();
-}
+constexpr prim_t BROWS_ANGRY[] = {          // steep slant toward the nose
+    prim_line(75, 50, 125, 68, TFT_WHITE),
+    prim_line(195, 68, 245, 50, TFT_WHITE),
+};
+
+constexpr prim_t MOUTH_ANGRY[] = {          // inverted arc = frown
+    prim_line(140, 183, 155, 172, MOUTH_COLOR),
+    prim_line(155, 172, 175, 183, MOUTH_COLOR),
+};
+
+constexpr face_spec_t SPEC_ANGRY = {
+    BROWS_ANGRY, 2, MOUTH_ANGRY, 2,
+    EYE_FILLED, 112,          // eyes slightly lowered
+    36, 22, 12,               // narrowed
+    0, 0};
 ```
 
-**3. Animation** — `src/animations/animation.cpp` (+ `.h`):
+**3. Wrapper** — declare in `src/face/face.h`, define in `src/face/face.cpp`:
 
 ```cpp
-void angryAnimation() {
-    drawAngryFace(-4, 0);  delay(90);    // lunge left
-    drawAngryFace( 4, 0);  delay(90);    // lunge right
-    drawAngryFace(-4, 0);  delay(90);
-    drawAngryFace( 4, 0);  delay(90);
-    drawAngryFace( 0, 0);  delay(400);   // seethe
-    drawNormalFace();
+void draw_angry_face(int offset_x, int offset_y)
+{
+    render_face(SPEC_ANGRY, offset_x, offset_y);
 }
 ```
 
-**4. Wire a trigger** — `src/main.cpp`, in `loop()`:
+**4. Animation** — `src/animations/animation.cpp` (+ `.h`):
 
 ```cpp
-if (buttonPressed(BUTTON_D)) {          // + init pinMode in initButtons()
-    currentExpression = ANGRY;
-    angryAnimation();
-    currentExpression = NORMAL;
+void angry_animation()
+{
+    draw_angry_face(-4, 0);  delay(90);    // lunge left
+    draw_angry_face( 4, 0);  delay(90);    // lunge right
+    draw_angry_face(-4, 0);  delay(90);
+    draw_angry_face( 4, 0);  delay(90);
+    draw_angry_face( 0, 0);  delay(400);   // seethe
+    draw_normal_face();
 }
 ```
 
-**5. Rebuild:** `pio run -t upload`.
+**5. Wire a trigger** — `src/main.cpp`, in `loop()`:
+
+```cpp
+if (button_pressed(BUTTON_D)) {          // + init pinMode in init_buttons()
+    current_expression = ANGRY;
+    angry_animation();
+    current_expression = NORMAL;
+}
+```
+
+**6. Rebuild:** `pio run -t upload`.
+
+That's the payoff of the table design: steps 2 and 3 are ~15 lines total, and you
+never touch the renderer.
 
 **Bigger refactors worth considering:**
 
 - **Table-driven keyframes.** Replace hand-written sequences with
-  `{faceFn, offsetX, offsetY, ms}` arrays and one generic `playKeyframes()` runner.
+  `{draw_fn, offset_x, offset_y, ms}` arrays and one generic `play_keyframes()` runner.
   Adds a function-pointer type — a good first step toward a real animation system.
-- **`millis()`-based timing.** Store `nextFrameAt` and check it in `loop()` instead
+- **`millis()`-based timing.** Store `next_frame_at` and check it in `loop()` instead
   of calling `delay()`. Animations become non-blocking, so buttons/shake stay live
   mid-animation.
 - **Use `FACE_CENTER_X/Y`.** Derive eye/mouth positions from the center constant
@@ -736,19 +922,20 @@ if (buttonPressed(BUTTON_D)) {          // + init pinMode in initButtons()
 
 ---
 
-## 11. Troubleshooting
+## 13. Troubleshooting
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Upload fails / port not found | Board not in bootloader | Hold **reset** while plugging in USB, then re-run upload. |
-| Black screen after upload | Wrong rotation or LCD not initialized | Confirm `initDisplay()` runs before any draw; check `setRotation(3)`. |
-| `TFT_eSPI` not found | Library missing | `pio run` once to fetch `lib_deps`, or `pio pkg install`. |
+| Black screen after upload | Wrong rotation or LCD not initialized | Confirm `init_display()` runs before any draw; check `setRotation(3)`. |
+| `TFT_eSPI` not found | Library missing | `pio run` once to fetch the framework libraries, or `pio pkg install`. |
 | `Wire1` / accelerometer errors | Using default `Wire` | The onboard LIS3DH is on `Wire1` — `lis.begin(Wire1)` is required. |
 | Shake triggers constantly | Threshold too low | Increase `SHAKE_THRESHOLD` (e.g. `3.0f`) in `accelerometer.cpp`. |
 | Shake never triggers | Threshold too high, or sensor not ready | Lower it; also check `lis.available()` and the `delay(100)` after `begin()`. |
-| Button fires multiple times | Debounce too short | Increase `delay(30)` in `buttonPressed()`. |
+| Button fires multiple times | Debounce too short | Increase `delay(30)` in `button_pressed()`. |
 | One button press does nothing | Another button/shake handled first | Each `if` is sequential; only one fires per pass by design. |
 | Animation feels laggy | Holds too long | Shorten the `delay()` values in `animation.cpp`. |
+| A feature is in the wrong place | Drawing logic outside `src/face/` | Move it behind a `draw_*` function so all shapes stay in one module. |
 | Serial monitor garbled | Baud mismatch | Use `-b 115200` to match `Serial.begin(115200)`. |
 
 **Useful commands:**
@@ -765,12 +952,16 @@ pio device list             # show connected serial ports
 
 ## Quick Reference: Every Drawing Call in the Project
 
+All five `TFT_eSPI` calls live in **one file** — `src/face/primitives.cpp`
+(plus the one `fillScreen` in `render_face`, `src/face/face.cpp`):
+
 | Call | Count of uses | Purpose |
 |---|---|---|
-| `tft.fillScreen(color)` | 1 per face/frame | Clear entire display |
-| `tft.fillCircle(x,y,r,color)` | ~30 | Eyes, irises, pupils, highlights, cheeks, round mouths |
-| `tft.drawCircle(x,y,r,color)` | 2 | Dizzy eye outlines (hollow) |
-| `tft.drawLine(x0,y0,x1,y1,color)` | ~40 | Eyebrows, mouths, eyelids, X-eyes |
+| `tft.fillScreen(color)` | 1 per frame | Clear entire display |
+| `tft.fillCircle(x,y,r,color)` | ~14 | Eyes, irises, pupils, highlights, cheeks, surprised mouth |
+| `tft.drawCircle(x,y,r,color)` | 3 | Dizzy sockets + surprised mouth ring |
+| `tft.drawLine(x0,y0,x1,y1,color)` | ~15 | Eyebrows, mouths, eyelids, X-eyes |
 
-That's the entire graphics vocabulary — five functions producing every face and
-every animation in the app.
+Everything else in the program goes through `draw_prim()`, `draw_eye()`,
+`draw_x_eye()`, `draw_closed_eye()`, `draw_cheeks()` — five functions and one struct
+produce every face and every animation in the app.

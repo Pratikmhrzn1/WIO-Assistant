@@ -10,7 +10,6 @@
 
 LIS3DHTR<TwoWire> lis;
 
-
 // =====================================================
 // SHAKE SETTINGS
 // =====================================================
@@ -21,14 +20,13 @@ constexpr float SHAKE_THRESHOLD = 2.5f;
 // Minimum time between shake detections.
 constexpr unsigned long SHAKE_COOLDOWN = 800;
 
-unsigned long lastShakeTime = 0;
-
+unsigned long last_shake_time = 0;
 
 // =====================================================
 // INITIALIZE ACCELEROMETER
 // =====================================================
 
-void initAccelerometer()
+void init_accelerometer()
 {
     lis.begin(Wire1);
 
@@ -38,12 +36,11 @@ void initAccelerometer()
     lis.setFullScaleRange(LIS3DHTR_RANGE_2G);
 }
 
-
 // =====================================================
 // SHAKE DETECTION
 // =====================================================
 
-bool shakeDetected()
+bool shake_detected()
 {
     if (!lis.available())
     {
@@ -58,19 +55,11 @@ bool shakeDetected()
 
     // Calculate total acceleration magnitude
 
-    float magnitude =
-        sqrt(
-            x * x +
-            y * y +
-            z * z
-        );
+    float magnitude = sqrt(x * x + y * y + z * z);
 
     // Check cooldown
 
-    if (
-        millis() - lastShakeTime
-        < SHAKE_COOLDOWN
-    )
+    if (millis() - last_shake_time < SHAKE_COOLDOWN)
     {
         return false;
     }
@@ -79,7 +68,7 @@ bool shakeDetected()
 
     if (magnitude > SHAKE_THRESHOLD)
     {
-        lastShakeTime = millis();
+        last_shake_time = millis();
 
         return true;
     }

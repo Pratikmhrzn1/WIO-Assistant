@@ -8,12 +8,12 @@
 #include "input/button.h"
 #include "input/accelerometer.h"
 #include "input/buzzer.h"
+
 // =====================================================
 // CURRENT EXPRESSION
 // =====================================================
 
-FaceExpression currentExpression = NORMAL;
-
+face_expression_t current_expression = NORMAL;
 
 // =====================================================
 // SETUP
@@ -24,20 +24,20 @@ void setup()
     Serial.begin(115200);
 
     // Display
-    initDisplay();
+    init_display();
 
     // Buttons
-    initButtons();
+    init_buttons();
 
     // Accelerometer
-    initAccelerometer();
+    init_accelerometer();
 
-    //Buzzer
-    initBuzzer();
-    currentExpression = NORMAL;
+    // Buzzer
+    init_buzzer();
+    current_expression = NORMAL;
 
     // Initial face
-    drawNormalFace();
+    draw_normal_face();
 
     Serial.println("Wio Terminal Face Ready!");
     Serial.println("A = Happy");
@@ -45,7 +45,6 @@ void setup()
     Serial.println("C = Surprised");
     Serial.println("Shake = Dizzy");
 }
-
 
 // =====================================================
 // LOOP
@@ -57,70 +56,60 @@ void loop()
     // SHAKE
     // =================================================
 
-    if (shakeDetected())
+    if (shake_detected())
     {
         Serial.println("Shake detected!");
 
-        currentExpression = DIZZY;
-        dizzyBeep();
-        dizzyAnimation();
+        current_expression = DIZZY;
+        dizzy_beep();
+        dizzy_animation();
 
-        currentExpression = NORMAL;
+        current_expression = NORMAL;
 
         return;
     }
-
 
     // =================================================
     // BUTTON A
     // HAPPY
     // =================================================
 
-    if (buttonPressed(BUTTON_A))
+    if (button_pressed(BUTTON_A))
     {
         Serial.println("Happy reaction!");
 
-        currentExpression = HAPPY;
-
-        happyAnimation();
-
-        currentExpression = NORMAL;
+        current_expression = HAPPY;
+        happy_animation();
+        current_expression = NORMAL;
     }
-
 
     // =================================================
     // BUTTON B
     // SLEEPY
     // =================================================
 
-    if (buttonPressed(BUTTON_B))
+    if (button_pressed(BUTTON_B))
     {
         Serial.println("Sleepy reaction!");
 
-        currentExpression = SLEEPY;
-        
-        sleepyAnimation();
-
-        currentExpression = NORMAL;
+        current_expression = SLEEPY;
+        sleepy_animation();
+        current_expression = NORMAL;
     }
-
 
     // =================================================
     // BUTTON C
     // SURPRISED
     // =================================================
 
-    if (buttonPressed(BUTTON_C))
+    if (button_pressed(BUTTON_C))
     {
         Serial.println("Surprised reaction!");
 
-        currentExpression = SURPRISED;
-
-        surprisedAnimation();
-
-        currentExpression = NORMAL;
+        current_expression = SURPRISED;
+        surprised_animation();
+        current_expression = NORMAL;
     }
-
 
     // =================================================
     // IDLE

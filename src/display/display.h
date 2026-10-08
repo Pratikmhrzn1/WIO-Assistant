@@ -1,5 +1,7 @@
 #pragma once
-#include<TFT_eSPI.h>
+
+#include <TFT_eSPI.h>
+
 extern TFT_eSPI tft;
 
-void initDisplay();
+void init_display();

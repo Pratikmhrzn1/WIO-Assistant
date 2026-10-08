@@ -1,4 +1,5 @@
 #pragma once
 
-void initBuzzer();
-void dizzyBeep();
+void init_buzzer();
+
+void dizzy_beep();

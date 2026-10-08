@@ -4,7 +4,7 @@
 // FACE EXPRESSIONS
 // =====================================================
 
-enum FaceExpression
+enum face_expression_t
 {
     NORMAL,
     HAPPY,
@@ -14,77 +14,21 @@ enum FaceExpression
 };
 
 // =====================================================
-// EYES
-// =====================================================
-
-void drawLeftEye(
-    int x,
-    int y,
-    int eyeSize,
-    int irisSize,
-    int pupilSize
-);
-
-void drawRightEye(
-    int x,
-    int y,
-    int eyeSize,
-    int irisSize,
-    int pupilSize
-);
-
-void drawNormalEyes(
-    int offsetX = 0,
-    int offsetY = 0
-);
-
-// =====================================================
-// CHEEKS
-// =====================================================
-
-void drawCheeks();
-
-// =====================================================
-// MOUTHS
-// =====================================================
-
-void drawNormalMouth();
-void drawHappyMouth();
-void drawSleepyMouth();
-void drawSurprisedMouth();
-void drawDizzyMouth();
-
-// =====================================================
-// EYEBROWS
-// =====================================================
-
-void drawNormalEyebrows();
-void drawHappyEyebrows();
-void drawSleepyEyebrows();
-void drawSurprisedEyebrows();
-void drawDizzyEyebrows();
-
-// =====================================================
 // COMPLETE FACES
 // =====================================================
 
-void drawNormalFace(
-    int offsetX = 0,
-    int offsetY = 0
-);
+void draw_normal_face(int offset_x = 0, int offset_y = 0);
 
-void drawHappyFace(
-    int offsetX = 0,
-    int offsetY = 0
-);
+void draw_happy_face(int offset_x = 0, int offset_y = 0);
 
-void drawSleepyFace();
+void draw_surprised_face(int offset_y = 0);
 
-void drawSurprisedFace(
-    int offsetY = 0
-);
+void draw_dizzy_face(int offset_x = 0, int offset_y = 0);
 
-void drawDizzyFace(
-    int offsetX = 0,
-    int offsetY = 0
-);
+// =====================================================
+// PARTIAL FRAMES (used by the animations)
+// =====================================================
+
+void draw_blink_frame();
+
+void draw_sleepy_frame(int lid_y);
